@@ -9,9 +9,9 @@ export default function Messager() {
     username: "",
     user_avatar: "",
   });
-
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
+  const [currentConversation, setCurrentConversation] = useState(null);
   const stompClientRef = useRef(null);
 
   useEffect(() => {
@@ -32,19 +32,58 @@ export default function Messager() {
 
   useEffect(() => {
     async function setDefaultHeader() {
-      if (header.username === "") {
-        const current_user_name = Cookies.get("current_user");
-        const current_user_avatar = await getSpecificUser(current_user_name);
+      if (!header.username) {
+        const currentUserName = Cookies.get("current_user");
+        const currentUserAvatar = await getSpecificUser(currentUserName);
         setHeader({
-          "username": Cookies.get("current_user"),
-          user_avatar: current_user_avatar,
+          "username": currentUserName,
+          "user_avatar": currentUserAvatar,
         });
       }
     }
     setDefaultHeader();
   }, [header]);
 
-	async function getSpecificUser(username) {
+  useEffect(() => {
+    const socket = new SockJS('http://localhost:8080/ws');
+    const client = Stomp.over(socket);
+
+    client.connect({}, () => {
+      stompClientRef.current = client;
+
+      const subscription = client.subscribe('/topic/messages', (message) => {
+        const receivedMessage = JSON.parse(message.body);
+        setMessages((prevMessages) => [...prevMessages, receivedMessage]);
+      });
+
+      return () => {
+        if (subscription) {
+          subscription.unsubscribe();
+        }
+
+        if (stompClientRef.current && stompClientRef.current.connected) {
+          stompClientRef.current.disconnect();
+        }
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (currentConversation) {
+      const privateSubscription = stompClientRef.current.subscribe(`/user/${currentConversation}/topic/messages`, (message) => {
+        const receivedMessage = JSON.parse(message.body);
+        setMessages((prevMessages) => [...prevMessages, receivedMessage]);
+      });
+
+      return () => {
+        if (privateSubscription) {
+          privateSubscription.unsubscribe();
+        }
+      };
+    }
+  }, [currentConversation]);
+
+  async function getSpecificUser(username) {
     try {
       const response = await fetch(`http://localhost:8080/api/v1/specificUser?username=${username}`);
       const json = await response.json();
@@ -75,17 +114,38 @@ export default function Messager() {
   async function sendMessage() {
     if (message.trim()) {
       const username = Cookies.get("current_user");
+      const senderId = await getUserId(username);
+
       const chatMessage = {
-        senderId: await getUserId(username),
+        senderId,
         messageContent: message,
       };
 
       if (stompClientRef.current && stompClientRef.current.connected) {
-        stompClientRef.current.send("/app/chat", {}, JSON.stringify(chatMessage));
+        if (currentConversation) {
+          stompClientRef.current.send(`/app/chat/${currentConversation}`, {}, JSON.stringify(chatMessage));
+        } else {
+          stompClientRef.current.send("/app/chat", {}, JSON.stringify(chatMessage));
+        }
         setMessage('');
       }
     }
   }
+
+  async function setUpConversation(senderName, receiverName) {
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/getConversationId?user1=${senderName}&user2=${receiverName}`);
+      const json = await response.json();
+      setCurrentConversation(json.get_conversation_by_id);
+    } catch (err) {
+      console.error(`error fetching conversation : ${err}`);
+    }
+  }
+	
+	const currentUserId = async () => {
+		const current_user_name = Cookies.get("current_user");
+		return getUserId(current_user_name);	
+	}
 
   return (
     <div className="container">
@@ -93,12 +153,6 @@ export default function Messager() {
         <div className="col-lg-12">
           <div className="card chat-app">
             <div id="plist" className="people-list">
-              <div className="input-group">
-                <div className="input-group-prepend">
-                  <span className="input-group-text"><i className="fa fa-search"></i></span>
-                </div>
-                <input type="text" className="form-control" placeholder="Search..." />
-              </div>
               <ul className="list-unstyled chat-list mt-2 mb-0">
                 {userList.map((user) => (
                   <li key={user.username} className="clearfix" onClick={() => {
@@ -106,6 +160,8 @@ export default function Messager() {
                       "username": user.username,
                       "user_avatar": user.user_avatar,
                     });
+                    const currentUser = Cookies.get("current_user");
+                    setUpConversation(currentUser, user.username);
                   }}>
                     <img src={user.user_avatar} alt="img" />
                     <div className="about">
@@ -137,17 +193,39 @@ export default function Messager() {
                 </div>
               </div>
               <div className="chat-history">
+			{/*
                 <ul className="m-b-0">
                   {messages.map((msg) => (
                     <li key={msg.messageId} className="clearfix">
                       <div className="message-data text-right">
                         <span className="message-data-time">10:10 AM, Today</span>
-                        <img src="https://bootdey.com/img/Content/avatar/avatar7.png" alt="avatar" />
+                        <img src={header.user_avatar} alt="avatar" />
                       </div>
-                      <div className="message other-message float-right">{msg.messageContent}</div>
+					<div className="message other-message float-right">{msg.messageContent}</div>
                     </li>
                   ))}
                 </ul>
+				*/}
+
+				<ul className="m-b-0">
+				  {messages.map((msg) => (
+					<li key={msg.messageId} className="clearfix">
+					  {msg.senderId === currentUserId ? ( // Check if the sender is the current user
+						<div className="message-data text-left"> {/* Align left for messages sent by the user */}
+						  <img src={header.user_avatar} alt="avatar" />
+						</div>
+					  ) : (
+						<div className="message-data text-right"> {/* Align right for messages sent by others */}
+						  <img src={header.user_avatar} alt="avatar" />
+						</div>
+					  )}
+					  <div className={`message ${msg.senderId === currentUserId ? 'own-message' : 'other-message'} float-right`}>
+						{msg.messageContent}
+					  </div>
+					</li>
+				  ))}
+				</ul>
+
               </div>
               <div className="chat-message clearfix">
                 <div className="input-group mb-0">

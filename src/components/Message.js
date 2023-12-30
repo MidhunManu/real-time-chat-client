@@ -4,112 +4,113 @@ import Stomp from "stompjs";
 import SockJS from "sockjs-client";
 
 export default function Message() {
-  const [userList, setUserList] = useState([]);
-  const [header, setHeader] = useState({
-    username: "",
-    user_avatar: "",
-  });
+	const [userList, setUserList] = useState([]);
+	const [header, setHeader] = useState({
+		username: "",
+		user_avatar: "",
+	});
 
-  const [messages, setMessages] = useState([]);
-  const [message, setMessage] = useState('');
-  const stompClientRef = useRef(null);
+	const [messages, setMessages] = useState([]);
+	const [message, setMessage] = useState('');
+	const stompClientRef = useRef(null);
 
-  useEffect(() => {
-    async function getUserList() {
-      try {
-        const response = await fetch("http://localhost:8080/api/v1/showUsers");
-        const json = await response.json();
+	useEffect(() => {
+		async function getUserList() {
+			try {
+				const response = await fetch("http://localhost:8080/api/v1/showUsers");
+				const json = await response.json();
 
-        if (response.ok) {
-          setUserList(json);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
-    getUserList();
-  }, []);
+				if (response.ok) {
+					setUserList(json);
+				}
+			} catch (err) {
+				console.error(err);
+			}
+		}
+		getUserList();
+	}, []);
 
-  useEffect(() => {
-    async function setDefaultHeader() {
-      if (header.username === "") {
-        const current_user_name = Cookies.get("current_user");
-        const current_user_avatar = await getSpecificUser(current_user_name);
-        setHeader({
-          "username": Cookies.get("current_user"),
-          user_avatar: current_user_avatar,
-        });
-      }
-    }
-    setDefaultHeader();
-  }, [header]);
+	useEffect(() => {
+		async function setDefaultHeader() {
+			if (header.username === "") {
+				const current_user_name = Cookies.get("current_user");
+				const current_user_avatar = await getSpecificUser(current_user_name);
+				setHeader({
+					"username": Cookies.get("current_user"),
+					user_avatar: current_user_avatar,
+				});
+			}
+		}
+		setDefaultHeader();
+	}, [header]);
 
-  useEffect(() => {
-    const socket = new SockJS('http://localhost:8080/ws');
-    const client = Stomp.over(socket);
+	useEffect(() => {
+		const socket = new SockJS('http://localhost:8080/ws');
+		const client = Stomp.over(socket);
 
-    client.connect({}, () => {
-      stompClientRef.current = client;
+		client.connect({}, () => {
+			stompClientRef.current = client;
 
-      const subscription = client.subscribe('/topic/messages', (message) => {
-        const receivedMessage = JSON.parse(message.body);
-        setMessages((prevMessages) => [...prevMessages, receivedMessage]);
-      });
+			const subscription = client.subscribe('/topic/messages', (message) => {
+				const receivedMessage = JSON.parse(message.body);
+				setMessages((prevMessages) => [...prevMessages, receivedMessage]);
+			});
 
-      return () => {
-        // Unsubscribe explicitly when the component is unmounted
-        if (subscription) {
-          subscription.unsubscribe();
-        }
+			return () => {
+				// Unsubscribe explicitly when the component is unmounted
+				if (subscription) {
+					subscription.unsubscribe();
+				}
 
-        if (stompClientRef.current && stompClientRef.current.connected) {
-          stompClientRef.current.disconnect();
-        }
-      };
-    });
-  }, []);
-  async function getSpecificUser(username) {
-    try {
-      const response = await fetch(`http://localhost:8080/api/v1/specificUser?username=${username}`);
-      const json = await response.json();
-      return json.user_avatar;
-    } catch (err) {
-      console.log(`specific user fetching error\n${err}`);
-    }
-  }
+				if (stompClientRef.current && stompClientRef.current.connected) {
+					stompClientRef.current.disconnect();
+				}
+			};
+		});
+	}, []);
 
-  async function getUserId(username) {
-    try {
-      const response = await fetch(`http://localhost:8080/api/v1/getUserIdJson?username=${username}`);
-      const response_json = await response.json();
-      if (response.ok) {
-        return response_json.userId;
-      } else {
-        console.log(response.body);
-      }
-    } catch (err) {
-      console.log(`error fetching user id : ${err}`);
-    }
-  }
+	async function getSpecificUser(username) {
+		try {
+			const response = await fetch(`http://localhost:8080/api/v1/specificUser?username=${username}`);
+			const json = await response.json();
+			return json.user_avatar;
+		} catch (err) {
+			console.log(`specific user fetching error\n${err}`);
+		}
+	}
 
-  function handleMessageChange(e) {
-    setMessage(e.target.value);
-  }
+	async function getUserId(username) {
+		try {
+			const response = await fetch(`http://localhost:8080/api/v1/getUserIdJson?username=${username}`);
+			const response_json = await response.json();
+			if (response.ok) {
+				return response_json.userId;
+			} else {
+				console.log(response.body);
+			}
+		} catch (err) {
+			console.log(`error fetching user id : ${err}`);
+		}
+	}
 
-  async function sendMessage() {
-    if (message.trim()) {
-      const username = Cookies.get("current_user");
-      const chatMessage = {
-        senderId: await getUserId(username),
-        messageContent: message,
-      };
+	function handleMessageChange(e) {
+		setMessage(e.target.value);
+	}
 
-      if (stompClientRef.current && stompClientRef.current.connected) {
-        stompClientRef.current.send("/app/chat", {}, JSON.stringify(chatMessage));
-        setMessage('');
-      }
-    }
-  }
+	async function sendMessage() {
+		if (message.trim()) {
+			const username = Cookies.get("current_user");
+			const chatMessage = {
+				senderId: await getUserId(username),
+				messageContent: message,
+			};
+
+			if (stompClientRef.current && stompClientRef.current.connected) {
+				stompClientRef.current.send("/app/chat", {}, JSON.stringify(chatMessage));
+				setMessage('');
+			}
+		}
+	}
 
   return (
     <div className="container">

@@ -14,6 +14,8 @@ export default function Message() {
 	const [message, setMessage] = useState('');
 	const stompClientRef = useRef(null);
 
+	const [conversationId, setConversationId] = useState("");
+
 	useEffect(() => {
 		async function getUserList() {
 			try {
@@ -112,6 +114,17 @@ export default function Message() {
 		}
 	}
 
+	async function setUpConversation(sender_name, receiver_name) {
+		try {
+			const response = await fetch(`http://localhost:8080/api/v1/getConversationId?user1=${sender_name}&user2=${receiver_name}`);
+			const json = await response.json();
+			setConversationId(json.get_conversation_by_id);
+		}
+		catch(err) {
+			console.error(`error fetching conversation : ${err}`);
+		}
+	}
+
   return (
     <div className="container">
       <div className="row clearfix">
@@ -131,6 +144,9 @@ export default function Message() {
                       "username": user.username,
                       "user_avatar": user.user_avatar,
                     });
+					const current_user = Cookies.get("current_user");
+					setUpConversation(current_user, user.username);
+					console.log("talk to ------" + conversationId);
                   }}>
                     <img src={user.user_avatar} alt="img" />
                     <div className="about">

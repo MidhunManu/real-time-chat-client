@@ -4,149 +4,182 @@ import Stomp from "stompjs";
 import SockJS from "sockjs-client";
 
 export default function Messager() {
-  const [userList, setUserList] = useState([]);
-  const [header, setHeader] = useState({
-    username: "",
-    user_avatar: "",
-  });
-  const [messages, setMessages] = useState([]);
-  const [message, setMessage] = useState('');
-  const [currentConversation, setCurrentConversation] = useState(null);
-  const stompClientRef = useRef(null);
+	const [userList, setUserList] = useState([]);
+	const [header, setHeader] = useState({
+		username: "",
+		user_avatar: "",
+	});
+	const [messages, setMessages] = useState([]);
+	const [message, setMessage] = useState('');
+	const [currentConversation, setCurrentConversation] = useState(null);
+	const stompClientRef = useRef(null);
+	const [currentUserId, setCurrentUserId] = useState(0);
 
-  useEffect(() => {
-    async function getUserList() {
-      try {
-        const response = await fetch("http://localhost:8080/api/v1/showUsers");
-        const json = await response.json();
+	useEffect(() => {
+		async function getUserList() {
+			try {
+				const response = await fetch("http://localhost:8080/api/v1/showUsers");
+				const json = await response.json();
 
-        if (response.ok) {
-          setUserList(json);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
-    getUserList();
-  }, []);
+				if (response.ok) {
+					setUserList(json);
+				}
+			} catch (err) {
+				console.error(err);
+			}
+		}
+		getUserList();
+	}, []);
 
-  useEffect(() => {
-    async function setDefaultHeader() {
-      if (!header.username) {
-        const currentUserName = Cookies.get("current_user");
-        const currentUserAvatar = await getSpecificUser(currentUserName);
-        setHeader({
-          "username": currentUserName,
-          "user_avatar": currentUserAvatar,
-        });
-      }
-    }
-    setDefaultHeader();
-  }, [header]);
+	useEffect(() => {
+		async function setDefaultHeader() {
+			if (!header.username) {
+				const currentUserName = Cookies.get("current_user");
+				const currentUserAvatar = await getSpecificUser(currentUserName);
+				setHeader({
+					"username": currentUserName,
+					"user_avatar": currentUserAvatar,
+				});
+			}
+		}
+		setDefaultHeader();
+	}, [header]);
 
-  useEffect(() => {
-    const socket = new SockJS('http://localhost:8080/ws');
-    const client = Stomp.over(socket);
+	useEffect(() => {
+		const socket = new SockJS('http://localhost:8080/ws');
+		const client = Stomp.over(socket);
 
-    client.connect({}, () => {
-      stompClientRef.current = client;
+		client.connect({}, () => {
+			stompClientRef.current = client;
 
-      const subscription = client.subscribe('/topic/messages', (message) => {
-        const receivedMessage = JSON.parse(message.body);
-        setMessages((prevMessages) => [...prevMessages, receivedMessage]);
-      });
+			const subscription = client.subscribe('/topic/messages', (message) => {
+				const receivedMessage = JSON.parse(message.body);
+				setMessages((prevMessages) => [...prevMessages, receivedMessage]);
+			});
 
-      return () => {
-        if (subscription) {
-          subscription.unsubscribe();
-        }
+			return () => {
+				if (subscription) {
+					subscription.unsubscribe();
+				}
 
-        if (stompClientRef.current && stompClientRef.current.connected) {
-          stompClientRef.current.disconnect();
-        }
-      };
-    });
-  }, []);
+				if (stompClientRef.current && stompClientRef.current.connected) {
+					stompClientRef.current.disconnect();
+				}
+			};
+		});
+	}, []);
 
-  useEffect(() => {
-    if (currentConversation) {
-      const privateSubscription = stompClientRef.current.subscribe(`/user/${currentConversation}/topic/messages`, (message) => {
-        const receivedMessage = JSON.parse(message.body);
-        setMessages((prevMessages) => [...prevMessages, receivedMessage]);
-      });
+	useEffect(() => {
+		if (currentConversation) {
+			const privateSubscription = stompClientRef.current.subscribe(`/user/${currentConversation}/topic/messages`, (message) => {
+				const receivedMessage = JSON.parse(message.body);
+				setMessages((prevMessages) => [...prevMessages, receivedMessage]);
+			});
 
-      return () => {
-        if (privateSubscription) {
-          privateSubscription.unsubscribe();
-        }
-      };
-    }
-  }, [currentConversation]);
+			return () => {
+				if (privateSubscription) {
+					privateSubscription.unsubscribe();
+				}
+			};
+		}
+	}, [currentConversation]);
 
-  async function getSpecificUser(username) {
-    try {
-      const response = await fetch(`http://localhost:8080/api/v1/specificUser?username=${username}`);
-      const json = await response.json();
-      return json.user_avatar;
-    } catch (err) {
-      console.log(`specific user fetching error\n${err}`);
-    }
-  }
+	useEffect(() => {
+		async function fetchCurrentUser() {
+			try {
+				const username = Cookies.get("current_user");
+				const response = await fetch(`http://localhost:8080/api/v1/getAllDetails?username=${username}`);
+				const json = await response.json();	
+				console.log(json);
+				setCurrentUserId(json.u_id);
+			}
+			catch(err) {
+				console.log(`erro fetching current user id : ${err}`);
+			}
+		}
+		fetchCurrentUser();
+	}, [])
 
-  async function getUserId(username) {
-    try {
-      const response = await fetch(`http://localhost:8080/api/v1/getUserIdJson?username=${username}`);
-      const response_json = await response.json();
-      if (response.ok) {
-        return response_json.userId;
-      } else {
-        console.log(response.body);
-      }
-    } catch (err) {
-      console.log(`error fetching user id : ${err}`);
-    }
-  }
 
-  function handleMessageChange(e) {
-    setMessage(e.target.value);
-  }
 
-  async function sendMessage() {
-    if (message.trim()) {
-      const username = Cookies.get("current_user");
-      const senderId = await getUserId(username);
-
-      const chatMessage = {
-        senderId,
-        messageContent: message,
-      };
-
-      if (stompClientRef.current && stompClientRef.current.connected) {
-        if (currentConversation) {
-          stompClientRef.current.send(`/app/chat/${currentConversation}`, {}, JSON.stringify(chatMessage));
-        } else {
-          stompClientRef.current.send("/app/chat", {}, JSON.stringify(chatMessage));
-        }
-        setMessage('');
-      }
-    }
-  }
-
-  async function setUpConversation(senderName, receiverName) {
-    try {
-      const response = await fetch(`http://localhost:8080/api/v1/getConversationId?user1=${senderName}&user2=${receiverName}`);
-      const json = await response.json();
-      setCurrentConversation(json.get_conversation_by_id);
-    } catch (err) {
-      console.error(`error fetching conversation : ${err}`);
-    }
-  }
-	
-	const currentUserId = async () => {
-		const current_user_name = Cookies.get("current_user");
-		return getUserId(current_user_name);	
+	async function getSpecificUser(username) {
+		try {
+			const response = await fetch(`http://localhost:8080/api/v1/specificUser?username=${username}`);
+			const json = await response.json();
+			return json.user_avatar;
+		} catch (err) {
+			console.log(`specific user fetching error\n${err}`);
+		}
 	}
 
+	async function getUserId(username) {
+		try {
+			const response = await fetch(`http://localhost:8080/api/v1/getUserIdJson?username=${username}`);
+			const response_json = await response.json();
+			if (response.ok) {
+				return response_json.userId;
+			} else {
+				console.log(response.body);
+			}
+		} catch (err) {
+			console.log(`error fetching user id : ${err}`);
+		}
+	}
+
+
+	function handleMessageChange(e) {
+		setMessage(e.target.value);
+	}
+
+	async function sendMessage() {
+		if (message.trim()) {
+			const username = Cookies.get("current_user");
+			const senderId = await getUserId(username);
+
+			const chatMessage = {
+				senderId,
+				messageContent: message,
+			};
+
+			if (stompClientRef.current && stompClientRef.current.connected) {
+				if (currentConversation) {
+					stompClientRef.current.send(`/app/chat/${currentConversation}`, {}, JSON.stringify(chatMessage));
+				} else {
+					stompClientRef.current.send("/app/chat", {}, JSON.stringify(chatMessage));
+				}
+				setMessage('');
+			}
+		}
+	}
+
+	async function setUpConversation(senderName, receiverName) {
+		try {
+			const response = await fetch(`http://localhost:8080/api/v1/getConversationId?user1=${senderName}&user2=${receiverName}`);
+			const json = await response.json();
+			setCurrentConversation(json.get_conversation_by_id);
+		} catch (err) {
+			console.error(`error fetching conversation : ${err}`);
+		}
+	}
+
+	/*
+		const currentUserId = async () => {
+			try {
+				const username = Cookies.get("current_user");
+				const response = await fetch(`http://localhost:8080/api/v1/getAllDetails?username=${username}`);
+				const json = await response.json();
+
+				return json.u_id;
+			}
+
+			catch(err) {
+				console.error(`error fetchig current id : ${err}`);
+			}
+		};
+	*/	
+
+		console.log(currentUserId + "is the user id");
+	
   return (
     <div className="container">
       <div className="row clearfix">

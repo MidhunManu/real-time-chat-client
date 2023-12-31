@@ -162,23 +162,7 @@ export default function Messager() {
 		}
 	}
 
-	/*
-		const currentUserId = async () => {
-			try {
-				const username = Cookies.get("current_user");
-				const response = await fetch(`http://localhost:8080/api/v1/getAllDetails?username=${username}`);
-				const json = await response.json();
-
-				return json.u_id;
-			}
-
-			catch(err) {
-				console.error(`error fetchig current id : ${err}`);
-			}
-		};
-	*/	
-
-		console.log(currentUserId + "is the user id");
+	console.log(currentUserId + "is the user id");
 	
   return (
     <div className="container">
@@ -226,39 +210,20 @@ export default function Messager() {
                 </div>
               </div>
               <div className="chat-history">
-			{/*
-                <ul className="m-b-0">
-                  {messages.map((msg) => (
-                    <li key={msg.messageId} className="clearfix">
-                      <div className="message-data text-right">
-                        <span className="message-data-time">10:10 AM, Today</span>
-                        <img src={header.user_avatar} alt="avatar" />
-                      </div>
-					<div className="message other-message float-right">{msg.messageContent}</div>
-                    </li>
-                  ))}
-                </ul>
-				*/}
 
-				<ul className="m-b-0">
-				  {messages.map((msg) => (
+			<ul className="m-b-0">
+				{messages.map((msg) => (
 					<li key={msg.messageId} className="clearfix">
-					  {msg.senderId === currentUserId ? ( // Check if the sender is the current user
-						<div className="message-data text-left"> {/* Align left for messages sent by the user */}
-						  <img src={header.user_avatar} alt="avatar" />
+						<div className={`message-data ${msg.senderId === currentUserId ? 'text-right' : 'text-left'}`}>
 						</div>
-					  ) : (
-						<div className="message-data text-right"> {/* Align right for messages sent by others */}
-						  <img src={header.user_avatar} alt="avatar" />
-						</div>
-					  )}
-					  <div className={`message ${msg.senderId === currentUserId ? 'own-message' : 'other-message'} float-right`}>
+						<div className={`message ${msg.senderId === currentUserId ? 'other-message float-right' : 'own-message float-left'}`}>
 						{msg.messageContent}
-					  </div>
+						</div>
 					</li>
-				  ))}
-				</ul>
+				))}
+			</ul>
 
+	
               </div>
               <div className="chat-message clearfix">
                 <div className="input-group mb-0">

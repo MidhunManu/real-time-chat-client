@@ -135,10 +135,12 @@ export default function Messager() {
 		if (message.trim()) {
 			const username = Cookies.get("current_user");
 			const senderId = await getUserId(username);
+			const conversationId = currentConversation;
 
 			const chatMessage = {
 				senderId,
 				messageContent: message,
+				connectionId: conversationId
 			};
 
 			if (stompClientRef.current && stompClientRef.current.connected) {
